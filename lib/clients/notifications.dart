@@ -1,7 +1,6 @@
-import 'package:flutter/material.dart';
+/*import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../auth.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import 'login_register_page.dart';
 
@@ -49,3 +48,4 @@ class MyWebView extends StatelessWidget {
     );
   }
 }
+*/

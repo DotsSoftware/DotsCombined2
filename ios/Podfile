@@ -1,4 +1,4 @@
-platform :ios, '15.0'
+platform :ios, '14.0' # Set the global platform to iOS 14.0
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -16,7 +16,7 @@ def flutter_root
   end
 
   File.foreach(generated_xcode_build_settings_path) do |line|
-    matches = line.match(/FLUTTER_ROOT\=(.*)\$/)
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
     return matches[1].strip if matches
   end
   raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
@@ -26,10 +26,10 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_ios_podfile_setup
 
-# Prevent Cocoapods from embedding a second Flutter framework
-install! 'cocoapods', :deterministic_uuids => false
-
 target 'Runner' do
+
+  pod 'PhoneNumberKit', '~> 3.7.6'
+
   use_frameworks!
   use_modular_headers!
 
@@ -39,29 +39,14 @@ target 'Runner' do
   end
 end
 
-post_install do |installer|
-  installer.pods_project.targets.each do |target|
-    flutter_additional_ios_build_settings(target)
-    
-    # Xcode 16 compatibility fixes
-    target.build_configurations.each do |config|
-      # Disable sandbox for user scripts
-      config.build_settings['USER_SCRIPT_SANDBOXING'] = 'NO'
-      
-      # Set iOS deployment target
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
-      
-      # Exclude arm64 architecture for simulator builds
-      if config.build_settings['SDKROOT'] == 'iphonesimulator'
-        config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
+
+  post_install do |installer|
+    installer.pods_project.targets.each do |target|
+      flutter_additional_ios_build_settings(target)
+      target.build_configurations.each do |config|
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0' # Enforce the deployment target for all pods
+        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+        config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
       end
-      
-      # Set Swift version
-      config.build_settings['SWIFT_VERSION'] = '5.0'
-      
-      # Disable code signing
-      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
     end
   end
-end
