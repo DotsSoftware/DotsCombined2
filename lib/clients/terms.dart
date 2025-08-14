@@ -1,355 +1,452 @@
-import 'package:flutter/material.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
-import 'package:syncfusion_flutter_signaturepad/signaturepad.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:ui' as ui;
-import 'dart:typed_data';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'dart:convert';
-import 'dashboard.dart';
-import 'dart:math' show min, max;
-
-import 'phone_verification.dart';
+import '../utils/theme.dart';
+import 'dashboard.dart'; // Assuming theme.dart contains appGradient
 
 class TermsPage extends StatefulWidget {
   const TermsPage({Key? key}) : super(key: key);
 
   @override
-  State<TermsPage> createState() => _TermsPageState();
+  _TermsPageState createState() => _TermsPageState();
 }
 
-class _TermsPageState extends State<TermsPage> {
-  final GlobalKey<SfSignaturePadState> _signaturePadKey = GlobalKey();
-  final PdfViewerController _pdfViewerController = PdfViewerController();
-  bool _hasReachedEnd = false;
-  bool _hasSigned = false;
-  bool _isSignatureValid = false;
-  List<Offset> _signaturePoints = [];
-  final double _minSignatureSize = 50.0;
-  int _totalPages = 0;
-  int _currentPage = 1;
-  bool _isSubmitting = false;
-  // Signature points to track drawing
+class _TermsPageState extends State<TermsPage> with TickerProviderStateMixin {
+  String? _errorMessage;
+  bool _isLoading = false;
 
-  Widget _title() {
-    return const Text(
-      'DOTS',
-      style: TextStyle(
-        fontWeight: FontWeight.bold,
-        color: Color.fromARGB(225, 0, 74, 173),
-        fontFamily: 'Quicksand',
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _initAnimations();
+  }
+
+  void _initAnimations() {
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.2, 1.0, curve: Curves.easeOut),
       ),
     );
-  }
 
-  Widget _appBarImage() {
-    return Image.network(
-      'https://firebasestorage.googleapis.com/v0/b/dots-b3559.appspot.com/o/Dots%20logo.png?alt=media&token=2c2333ea-658a-4a70-9378-39c6c248f5ca',
-      height: 55,
-      width: 55,
-      errorBuilder:
-          (BuildContext context, Object exception, StackTrace? stackTrace) {
-        return const Text('Image not found');
-      },
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.3, 1.0, curve: Curves.elasticOut),
+      ),
     );
+
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.0, 0.6, curve: Curves.elasticOut),
+      ),
+    );
+
+    _animationController.forward();
   }
 
-  Widget _buildPdfViewer() {
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  Widget _buildModernCard({
+    required String title,
+    required Widget child,
+    IconData? icon,
+  }) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.5,
-      child: SfPdfViewer.network(
-        'https://firebasestorage.googleapis.com/v0/b/dots-b3559.appspot.com/o/GENERAL%20TERMS%20AND%20CONDITIONS%20-%20Clients.pdf?alt=media&token=11f8ac64-71b5-4e00-84a9-0cf02ebf0967',
-        controller: _pdfViewerController,
-        onDocumentLoaded: (PdfDocumentLoadedDetails details) {
-          setState(() {
-            _totalPages = details.document.pages.count;
-          });
-        },
-        onPageChanged: (PdfPageChangedDetails details) {
-          setState(() {
-            _currentPage = details.newPageNumber;
-            _hasReachedEnd = details.newPageNumber == _totalPages;
-          });
-        },
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
-    );
-  }
-
-  Widget _buildNavigationButtons() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        ElevatedButton(
-          onPressed: _currentPage > 1
-              ? () {
-                  _pdfViewerController.previousPage();
-                }
-              : null,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.black,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30),
-            ),
-          ),
-          child: const Text('Previous', style: TextStyle(color: Colors.white)),
-        ),
-        const SizedBox(width: 20),
-        Text('Page $_currentPage of $_totalPages'),
-        const SizedBox(width: 20),
-        ElevatedButton(
-          onPressed: _currentPage < _totalPages
-              ? () {
-                  _pdfViewerController.nextPage();
-                }
-              : null,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.black,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30),
-            ),
-          ),
-          child: const Text('Next', style: TextStyle(color: Colors.white)),
-        ),
-      ],
-    );
-  }
-
-  bool _handleSignatureStart() {
-    _signaturePoints.clear();
-    setState(() {
-      _isSignatureValid = false;
-      _hasSigned = false;
-    });
-    return true; // Return true to allow drawing
-  }
-
-  void _handleSignatureDraw(Offset point, DateTime timestamp) {
-    _signaturePoints.add(point);
-
-    if (_signaturePoints.length < 10) return;
-
-    double minX = _signaturePoints.map((p) => p.dx).reduce(min);
-    double maxX = _signaturePoints.map((p) => p.dx).reduce(max);
-    double minY = _signaturePoints.map((p) => p.dy).reduce(min);
-    double maxY = _signaturePoints.map((p) => p.dy).reduce(max);
-
-    double width = maxX - minX;
-    double height = maxY - minY;
-
-    bool isValid = width > _minSignatureSize && height > _minSignatureSize;
-
-    if (isValid && !_isSignatureValid) {
-      setState(() {
-        _isSignatureValid = true;
-        _hasSigned = true;
-      });
-    }
-  }
-
-  void _handleSignatureEnd() {
-    // Optional: Add any end-of-signature logic here
-  }
-
-  Widget _buildSignaturePad() {
-    return _hasReachedEnd
-        ? Column(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
+              if (icon != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: Icon(icon, color: const Color(0xFF1E3A8A), size: 24),
+                ),
+                const SizedBox(width: 16),
+              ],
+              Expanded(
                 child: Text(
-                  'Please sign below to accept the terms and conditions',
-                  style: TextStyle(
-                    fontSize: 16,
+                  title,
+                  style: const TextStyle(
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 0.5,
                   ),
                 ),
-              ),
-              Container(
-                height: 200,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: SfSignaturePad(
-                  key: _signaturePadKey,
-                  backgroundColor: Colors.white,
-                  strokeColor: Colors.black,
-                  minimumStrokeWidth: 1.0,
-                  maximumStrokeWidth: 4.0,
-                  onDrawStart: _handleSignatureStart,
-                  onDraw: _handleSignatureDraw,
-                  onDrawEnd: _handleSignatureEnd,
-                ),
-              ),
-              if (_isSignatureValid)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    'Signature captured',
-                    style: TextStyle(
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  _signaturePadKey.currentState?.clear();
-                  _handleSignatureStart();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.grey,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                ),
-                child: const Text('Clear Signature',
-                    style: TextStyle(color: Colors.white)),
               ),
             ],
-          )
-        : const SizedBox.shrink();
+          ),
+          const SizedBox(height: 20),
+          child,
+        ],
+      ),
+    );
   }
 
-  bool _validateSignaturePoint(Offset point) {
-    _signaturePoints.add(point);
+  Widget _termsAndConditions() {
+    return Text(
+      '''
+Terms and Conditions
 
-    if (_signaturePoints.length < 10) return false;
+1. Introduction
+Welcome to Dots, an innovative platform designed to connect business clients with qualified consultants. By using our app, you agree to these Terms and Conditions. Please read them carefully.
 
-    double minX = _signaturePoints.map((p) => p.dx).reduce(min);
-    double maxX = _signaturePoints.map((p) => p.dx).reduce(max);
-    double minY = _signaturePoints.map((p) => p.dy).reduce(min);
-    double maxY = _signaturePoints.map((p) => p.dy).reduce(max);
+2. Definitions
+- **App:** Refers to the Dots mobile application.
+- **User:** Refers to anyone who uses the app, including both clients and consultants.
+- **Client:** A user who seeks services through the app.
+- **Consultant:** A user who provides services through the app.
+- **Services:** The consulting services provided by consultants to clients.
 
-    double width = maxX - minX;
-    double height = maxY - minY;
+3. Acceptance of Terms
+By downloading, accessing, or using the Dots app, you agree to be bound by these Terms and Conditions and our Privacy Policy. If you do not agree with these terms, please do not use the app.
 
-    bool isValid = width > _minSignatureSize && height > _minSignatureSize;
+4. Registration
+- Users must register an account to use the services provided by the app.
+- Consultants must provide accurate and complete information during the registration process and keep this information up to date.
 
-    if (isValid && !_isSignatureValid) {
+5. Use of the App
+- Users agree to use the app in accordance with all applicable laws and regulations.
+- Users must not misuse the app or its services, including but not limited to interfering with the normal operation of the app or attempting to access it using a method other than the interface provided.
+
+6. Consultant Responsibilities
+- Consultants are responsible for providing accurate information about their qualifications and expertise.
+- Consultants must ensure that they have the necessary skills and qualifications to provide the services they offer.
+- Consultants must comply with all applicable laws and professional standards in the provision of their services.
+
+7. Client Responsibilities
+- Clients are responsible for providing accurate and complete information when requesting services.
+- Clients must pay for the services provided by consultants in accordance with the agreed terms.
+
+8. Payment and Fees
+- Payment for services will be handled through the app’s payment system.
+- Consultants will receive payment for their services minus any applicable service fees.
+
+9. Cancellations and Refunds
+- Cancellations and refunds will be handled in accordance with the app’s cancellation and refund policy, which is available on the app.
+
+10. Intellectual Property
+- All content and materials on the app, including but not limited to text, graphics, logos, and software, are the property of Dots or its licensors and are protected by intellectual property laws.
+- Users may not use any content from the app without prior written permission from Dots.
+
+11. Privacy
+- Our Privacy Policy outlines how we collect, use, and protect your information. By using the app, you agree to the terms of our Privacy Policy.
+
+12. Disclaimers
+- The app and services are provided on an "as is" and "as available" basis. We do not warrant that the app will be uninterrupted or error-free.
+- We do not endorse or guarantee the qualifications, expertise, or services of any consultant.
+
+13. Limitation of Liability
+- To the fullest extent permitted by law, Dots shall not be liable for any indirect, incidental, special, consequential, or punitive damages, or any loss of profits or revenues, whether incurred directly or indirectly, or any loss of data, use, goodwill, or other intangible losses resulting from your use of the app or services.
+
+14. Changes to Terms
+- We reserve the right to modify these Terms and Conditions at any time. Any changes will be effective immediately upon posting on the app. Your continued use of the app following the posting of changes constitutes your acceptance of such changes.
+
+15. Governing Law
+- These Terms and Conditions are governed by and construed in accordance with the laws of South Africa, without regard to its conflict of law principles.
+
+16. Contact Us
+- If you have any questions about these Terms and Conditions, please contact us at info@dotssa.co.za.
+      ''',
+      style: TextStyle(
+        fontSize: 14,
+        color: Colors.white.withOpacity(0.8),
+        height: 1.5,
+      ),
+    );
+  }
+
+  Future<void> _acceptTerms() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
       setState(() {
-        _isSignatureValid = true;
-        _hasSigned = true;
+        _isLoading = true;
+        _errorMessage = null;
+      });
+      try {
+        await FirebaseFirestore.instance
+            .collection('consultant_side')
+            .doc(user.uid)
+            .set(
+          {
+            'termsAccepted': true,
+            'termsAcceptedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Terms accepted successfully!'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => DashboardPage()),
+        );
+      } catch (e) {
+        setState(() {
+          _errorMessage = 'Error accepting terms: $e';
+        });
+      } finally {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } else {
+      setState(() {
+        _errorMessage = 'User not authenticated. Please log in.';
       });
     }
-
-    return isValid;
-  }
-
-  Future<void> _saveSignatureToFirestore() async {
-    if (!_isSignatureValid) return;
-
-    try {
-      setState(() => _isSubmitting = true);
-
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('No user logged in');
-
-      // Convert signature to image
-      final signatureData = await _signaturePadKey.currentState?.toImage();
-      final bytes =
-          await signatureData?.toByteData(format: ui.ImageByteFormat.png);
-      if (bytes == null) throw Exception('Failed to get signature data');
-
-      // Upload signature to Storage
-      final storage = FirebaseStorage.instance;
-      final signatureRef = storage.ref().child(
-          'signatures/${user.uid}_${DateTime.now().millisecondsSinceEpoch}.png');
-      await signatureRef.putData(bytes.buffer.asUint8List());
-      final signatureUrl = await signatureRef.getDownloadURL();
-
-      // Save to Firestore
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'termsAccepted': true,
-        'termsAcceptanceDate': FieldValue.serverTimestamp(),
-        'signatureUrl': signatureUrl,
-        'termsVersion': '1.0',
-      }, SetOptions(merge: true));
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => PhoneVerificationPage()),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error saving signature: ${e.toString()}')),
-      );
-    } finally {
-      setState(() => _isSubmitting = false);
-    }
-  }
-
-  Widget _submitButton() {
-    return _hasReachedEnd && _isSignatureValid
-        ? Container(
-            margin: const EdgeInsets.symmetric(vertical: 16),
-            child: ElevatedButton(
-              onPressed: _isSubmitting ? null : _saveSignatureToFirestore,
-              style: ElevatedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                backgroundColor: Colors.black,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-              ),
-              child: _isSubmitting
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : const Text(
-                      'Accept and Continue',
-                      style: TextStyle(color: Colors.white),
-                    ),
-            ),
-          )
-        : const SizedBox.shrink();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: Row(
-          children: [
-            _appBarImage(),
-            const SizedBox(width: 10),
-            _title(),
-          ],
-        ),
-        toolbarHeight: 72,
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Text(
-                'Terms and Conditions',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Color.fromARGB(225, 0, 74, 173),
-                  fontFamily: 'Quicksand',
+      body: Container(
+        decoration: const BoxDecoration(gradient: appGradient),
+        child: SafeArea(
+          child: _isLoading
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Processing...',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Header
+                      ScaleTransition(
+                        scale: _scaleAnimation,
+                        child: FadeTransition(
+                          opacity: _fadeAnimation,
+                          child: Column(
+                            children: [
+                              Container(
+                                width: 80,
+                                height: 80,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.2),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 10),
+                                    ),
+                                  ],
+                                ),
+                                child: Image.network(
+                                  'https://firebasestorage.googleapis.com/v0/b/dots-b3559.appspot.com/o/Dots%20logo.png?alt=media&token=2c2333ea-658a-4a70-9378-39c6c248f5ca',
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      const Icon(
+                                    Icons.error_outline,
+                                    color: Color(0xFF1E3A8A),
+                                    size: 40,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              const Text(
+                                'Boring, but Important',
+                                style: TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              Text(
+                                'Read and accept to continue',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white.withOpacity(0.8),
+                                  fontWeight: FontWeight.w300,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 32),
+
+                      // Terms and Conditions
+                      SlideTransition(
+                        position: _slideAnimation,
+                        child: FadeTransition(
+                          opacity: _fadeAnimation,
+                          child: _buildModernCard(
+                            title: 'Terms and Conditions',
+                            icon: Icons.description_outlined,
+                            child: _termsAndConditions(),
+                          ),
+                        ),
+                      ),
+
+                      // Error Message
+                      if (_errorMessage != null)
+                        SlideTransition(
+                          position: _slideAnimation,
+                          child: FadeTransition(
+                            opacity: _fadeAnimation,
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 16),
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: Colors.red.withOpacity(0.3),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.error_outline,
+                                    color: Colors.red,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      _errorMessage!,
+                                      style: const TextStyle(
+                                        color: Colors.red,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      // Accept Button
+                      SlideTransition(
+                        position: _slideAnimation,
+                        child: FadeTransition(
+                          opacity: _fadeAnimation,
+                          child: Container(
+                            margin: const EdgeInsets.only(top: 16),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: _acceptTerms,
+                                borderRadius: BorderRadius.circular(24),
+                                child: Container(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 20),
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [Colors.white, Color(0xFFF0F0F0)],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    borderRadius: BorderRadius.circular(24),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 20,
+                                        offset: const Offset(0, 10),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.check,
+                                        color: Color(0xFF1E3A8A),
+                                        size: 24,
+                                      ),
+                                      SizedBox(width: 12),
+                                      Text(
+                                        'Accept and Continue',
+                                        style: TextStyle(
+                                          color: Color(0xFF1E3A8A),
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 32),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              _buildPdfViewer(),
-              const SizedBox(height: 20),
-              _buildNavigationButtons(),
-              _buildSignaturePad(),
-              _submitButton(),
-            ],
-          ),
         ),
       ),
     );

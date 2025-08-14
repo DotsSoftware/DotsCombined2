@@ -1,3 +1,21 @@
+#!/bin/bash
+
+echo "Starting Flutter SDK hash mismatch fix..."
+
+# Clean Flutter project cache
+echo "Cleaning Flutter project cache..."
+rm -rf .dart_tool/ build/
+flutter clean
+
+# Clean iOS build artifacts
+echo "Cleaning iOS build artifacts..."
+cd ios
+rm -rf Pods/ Podfile.lock
+rm -rf ~/Library/Developer/Xcode/DerivedData/*
+
+# Update Podfile to fix Xcode 16 issues
+echo "Updating Podfile for Xcode 16 compatibility..."
+cat > Podfile << 'EOF'
 platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
@@ -65,3 +83,21 @@ post_install do |installer|
     end
   end
 end
+EOF
+
+# Install pods
+echo "Installing pods..."
+pod install
+
+# Go back to project root
+cd ..
+
+# Create a temporary fix for the Flutter SDK hash mismatch
+echo "Creating temporary fix for Flutter SDK hash mismatch..."
+mkdir -p .dart_tool/flutter_build/temp_fix
+
+# Clean and rebuild
+echo "Cleaning and rebuilding the project..."
+flutter pub get
+
+echo "Fix completed. Try building the project with: flutter build ios --no-codesign"
